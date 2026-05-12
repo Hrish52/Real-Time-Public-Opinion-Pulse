@@ -738,11 +738,15 @@ with tab4:
         sort_by = st.selectbox("Sort by", ["Newest", "Most Engaged", "Most Negative", "Most Positive", "For (Stance)", "Against (Stance)", "Neutral (Stance)"])
 
     all_platforms = sorted(df_filtered["platform"].dropna().unique().tolist())
-    all_sources   = sorted(df_filtered["source_name"].dropna().unique().tolist())
 
     col_c, col_d = st.columns(2)
     with col_c:
         platform_filter = st.multiselect("Platform", all_platforms, placeholder="All platforms", key="posts_platform")
+
+    # Source options cascade from platform selection — if no platform chosen, show all sources
+    platform_base = df_filtered[df_filtered["platform"].isin(platform_filter)] if platform_filter else df_filtered
+    all_sources   = sorted(platform_base["source_name"].dropna().unique().tolist())
+
     with col_d:
         source_filter = st.multiselect("Source", all_sources, placeholder="All sources", key="posts_source")
 
