@@ -44,6 +44,20 @@ THEME = {
     ],
 }
 
+# One fixed, high-contrast color per topic — spread across the color wheel
+TOPIC_COLORS = {
+    "artificial intelligence": "#1565C0",  # blue
+    "business":                "#E64A19",  # deep orange
+    "climate policy":          "#2E7D32",  # green
+    "data privacy":            "#6A1B9A",  # purple
+    "tech layoffs":            "#C62828",  # red
+    "us politics":             "#00838F",  # teal
+    "hollywood":               "#AD1457",  # pink
+    "world news":              "#6D4C41",  # brown
+    "tech news":               "#F9A825",  # amber
+    "other":                   "#9E9E9E",  # grey
+}
+
 # Custom Plotly template
 custom_template = go.layout.Template()
 custom_template.layout = go.Layout(
@@ -174,6 +188,16 @@ _SCRAPE_ARTIFACTS = re.compile(
     re.IGNORECASE,
 )
 
+def sentiment_label(score: float) -> str:
+    if score >= 0.5:   return "Very Positive"
+    if score >= 0.2:   return "Positive"
+    if score >= 0.05:  return "Slightly Positive"
+    if score > -0.05:  return "Neutral"
+    if score > -0.2:   return "Slightly Negative"
+    if score > -0.5:   return "Negative"
+    return "Very Negative"
+
+
 def clean_content(text: str) -> str:
     text = str(text).strip()
     text = _SCRAPE_ARTIFACTS.sub("", text).strip()
@@ -294,10 +318,34 @@ with col1:
 
 with col2:
     if df_filtered.empty:
-        st.metric("Average Sentiment", "—")
+        score_color = THEME["text_muted"]
+        score_html  = "—"
+        label_html  = "—"
+        arrow       = ""
     else:
-        avg_sent = df_filtered["sentiment_score"].mean()
-        st.metric("Average Sentiment", f"{avg_sent:+.3f}")
+        avg_sent    = df_filtered["sentiment_score"].mean()
+        label_html  = sentiment_label(avg_sent)
+        score_html  = f"{avg_sent:+.3f}"
+        if avg_sent > 0.05:
+            score_color, arrow = THEME["positive"], "↑"
+        elif avg_sent < -0.05:
+            score_color, arrow = THEME["negative"], "↓"
+        else:
+            score_color, arrow = THEME["neutral"], "→"
+    st.markdown(
+        f"""<div style="line-height:1.4">
+          <p style="font-size:0.875rem;color:{THEME['text_muted']};margin:0 0 4px;font-weight:400">
+            Average Sentiment
+          </p>
+          <p style="font-size:1.75rem;font-weight:700;margin:0;color:{THEME['text']}">
+            {label_html}
+          </p>
+          <p style="font-size:0.85rem;color:{score_color};margin:4px 0 0">
+            {arrow} {score_html} &nbsp;<span style="color:{THEME['text_muted']}">scale −1 to +1</span>
+          </p>
+        </div>""",
+        unsafe_allow_html=True,
+    )
 
 with col3:
     if df_filtered.empty:
@@ -318,17 +366,17 @@ st.markdown('<br>', unsafe_allow_html=True)
 # ══════════════════════════════════════════
 # TABS
 # ══════════════════════════════════════════    
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["Overview", "By Topic", "By Source", "Posts", "Summary"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["Pulse", "Topics", "Sources", "Posts", "Summary"])
 
 _no_data_msg = "Select topics and source categories in the sidebar to view data."
 
-with tab1:
+with tab1:  # ── PULSE ──
     if df_filtered.empty:
         st.info(_no_data_msg)
     else:
-        # ── Snapshot row ──
+        # ── Snapshot ──
         st.markdown("### Snapshot")
-        snap_a, snap_b, snap_c = st.columns(3)
+        snap_a, snap_b = st.columns(2)
 
         with snap_a:
             st.markdown("##### Posts per Topic")
@@ -336,18 +384,16 @@ with tab1:
             fig = go.Figure(go.Bar(
                 x=topic_counts.values, y=topic_counts.index,
                 orientation="h", marker_color=THEME["primary"],
+                hovertemplate="%{y}: %{x} posts<extra></extra>",
             ))
-            fig.update_layout(height=280, margin=dict(l=10, r=10, t=10, b=10), xaxis_title="Posts")
+            fig.update_layout(height=300, margin=dict(l=10, r=10, t=10, b=10), xaxis_title="Posts")
             st.plotly_chart(fig, use_container_width=True)
 
         with snap_b:
             st.markdown("##### Sentiment Split")
-            if "sentiment_label" in df_filtered.columns:
-                sent_counts = df_filtered["sentiment_label"].value_counts()
-            else:
-                bins = pd.cut(df_filtered["sentiment_score"], bins=[-1, -0.05, 0.05, 1],
-                              labels=["negative", "neutral", "positive"])
-                sent_counts = bins.value_counts()
+            bins = pd.cut(df_filtered["sentiment_score"], bins=[-1, -0.05, 0.05, 1],
+                          labels=["negative", "neutral", "positive"])
+            sent_counts = bins.value_counts()
             _sent_order = ["positive", "negative", "neutral"]
             _sent_colors = [THEME["positive"], THEME["negative"], THEME["neutral"]]
             sent_counts = sent_counts.reindex(_sent_order, fill_value=0)
@@ -355,44 +401,142 @@ with tab1:
                 labels=sent_counts.index, values=sent_counts.values,
                 marker_colors=_sent_colors, hole=0.45,
             ))
-            fig.update_layout(height=280, margin=dict(l=10, r=10, t=10, b=10))
-            st.plotly_chart(fig, use_container_width=True)
-
-        with snap_c:
-            st.markdown("##### By Source Category")
-            cat_counts = df_filtered["source_category"].value_counts()
-            fig = go.Figure(go.Pie(
-                labels=cat_counts.index, values=cat_counts.values, hole=0.45,
-            ))
-            fig.update_layout(height=280, margin=dict(l=10, r=10, t=10, b=10))
+            fig.update_layout(height=300, margin=dict(l=10, r=10, t=10, b=10))
             st.plotly_chart(fig, use_container_width=True)
 
         st.markdown("---")
 
-        # ── Sentiment trends ──
-        st.markdown("### Sentiment Trends Over Time")
+        # ── Conversation Volume Over Time ──
+        st.markdown("### Conversation Volume Over Time")
+        st.caption("When was each topic most discussed?")
 
+        daily_vol_all = df_filtered.groupby(["date", "topic"]).size().reset_index(name="posts")
+        vol_points = daily_vol_all.groupby("topic").size()
+        vol_default = sorted(
+            vol_points.drop(labels=["other"], errors="ignore").nlargest(5).index.tolist()
+        )
+
+        vcol_a, vcol_b = st.columns([3, 1])
+        with vcol_a:
+            vol_selection = st.multiselect(
+                "Compare topics ",
+                options=sorted(daily_vol_all["topic"].unique()),
+                default=vol_default,
+                key="vol_topics",
+            )
+        with vcol_b:
+            vol_smooth = st.checkbox("7-day rolling sum", value=False, key="vol_smooth",
+                                     help="Each day shows the total posts from the past 7 days. Smooths out daily spikes to reveal the underlying trend.")
+
+        daily_vol = daily_vol_all[daily_vol_all["topic"].isin(vol_selection)].copy() if vol_selection else daily_vol_all.copy()
+
+        if vol_smooth:
+            daily_vol["posts"] = (
+                daily_vol.groupby("topic")["posts"]
+                .transform(lambda s: s.rolling(7, min_periods=1).sum())
+                .round(0).astype(int)
+            )
+
+        fig = px.bar(
+            daily_vol, x="date", y="posts", color="topic",
+            color_discrete_map=TOPIC_COLORS,
+            labels={"posts": "Posts", "date": "Date", "topic": "Topic"},
+        )
+        fig.update_traces(
+            hovertemplate="<b>%{fullData.name}</b><br>%{x|%b %d, %Y}<br>Posts: %{y}<extra></extra>"
+        )
+        fig.update_layout(height=380, barmode="stack")
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown("---")
+
+        # ── Opinion River ──
+        st.markdown("### Opinion River — Stance Proportions Over Time")
+        st.caption("How does the balance of support, opposition, and neutrality shift day to day?")
+        stance_time = df_filtered.groupby(["date", "stance"]).size().reset_index(name="count")
+        stance_total_day = stance_time.groupby("date")["count"].transform("sum")
+        stance_time["pct"] = (stance_time["count"] / stance_total_day * 100).round(2)
+        fig = px.area(
+            stance_time, x="date", y="pct", color="stance",
+            color_discrete_map={"for": THEME["positive"], "against": THEME["negative"], "neutral": THEME["neutral"]},
+            labels={"pct": "Share (%)", "date": "Date"},
+        )
+        fig.update_traces(
+            hovertemplate="<b>%{fullData.name}</b><br>%{x|%b %d, %Y}<br>Share: %{y:.2f}%<extra></extra>"
+        )
+        fig.update_layout(height=350)
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown("---")
+
+        # ── Controversy Map ──
+        st.markdown("### Controversy Map")
+        st.caption("Upper-right = polarized (strong opinions both ways). Lower-right = broadly supported. Bubble size = post count.")
+        controversy = df_filtered.groupby("topic").agg(
+            pct_for=("stance", lambda x: round((x == "for").mean() * 100, 2)),
+            pct_against=("stance", lambda x: round((x == "against").mean() * 100, 2)),
+            post_count=("stance", "count"),
+        ).reset_index()
+        fig = px.scatter(
+            controversy, x="pct_for", y="pct_against",
+            size="post_count", color="topic", text="topic",
+            color_discrete_map=TOPIC_COLORS,
+            labels={"pct_for": "% In Favor", "pct_against": "% Against", "topic": "Topic", "post_count": "Posts"},
+            size_max=60,
+        )
+        fig.update_traces(
+            textposition="top center",
+            hovertemplate="<b>%{text}</b><br>In Favor: %{x:.1f}%<br>Against: %{y:.1f}%<br>Posts: %{marker.size}<extra></extra>",
+        )
+        fig.add_vline(x=25, line_dash="dot", line_color=THEME["border"])
+        fig.add_hline(y=25, line_dash="dot", line_color=THEME["border"])
+        fig.update_layout(height=480, showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
+
+with tab2:  # ── TOPICS ──
+    if df_filtered.empty:
+        st.info(_no_data_msg)
+    else:
+        # ── Avg Sentiment per Topic ──
+        st.markdown("### How Do Topics Compare?")
+        topic_sent = df_filtered.groupby("topic")["sentiment_score"].mean().sort_values().round(4)
+        colors = [THEME["negative"] if v < 0 else THEME["positive"] for v in topic_sent.values]
+        fig = go.Figure(go.Bar(
+            x=topic_sent.values, y=topic_sent.index,
+            orientation="h", marker_color=colors,
+            hovertemplate="%{y}<br>Avg Sentiment: %{x:+.4f}<extra></extra>",
+        ))
+        fig.update_layout(height=400, xaxis_title="Avg Sentiment")
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown("---")
+
+        # ── Sentiment Trends ──
+        st.markdown("### Sentiment Trends Over Time")
         daily_all = df_filtered.groupby(["date", "topic"])["sentiment_score"].mean().reset_index()
         daily_all = daily_all.sort_values(["topic", "date"])
 
-        # Only offer topics that have enough data points to show a meaningful trend
         points_per_topic = daily_all.groupby("topic").size()
-        rich_topics = points_per_topic[points_per_topic >= 3].index.tolist()
         sparse_topics = points_per_topic[points_per_topic < 3].index.tolist()
+        default_topics = sorted(
+            points_per_topic[points_per_topic >= 3]
+            .drop(labels=["other"], errors="ignore")
+            .nlargest(5).index.tolist()
+        )
 
         ctrl_a, ctrl_b, ctrl_c = st.columns([3, 1, 1])
         with ctrl_a:
             topic_selection = st.multiselect(
                 "Compare topics",
                 options=sorted(daily_all["topic"].unique()),
-                default=sorted(rich_topics),
+                default=default_topics,
                 help="Topics with fewer than 3 data points may not show a clear trend.",
             )
         with ctrl_b:
-            smooth = st.checkbox("7-day avg", value=False)
+            smooth = st.checkbox("7-day avg", value=True)
         with ctrl_c:
             scale_mode = st.selectbox("Scale", ["Raw", "Z-score"], index=0,
-                                      help="Z-score: each topic centred on its own mean. Shows relative spikes, not absolute values.")
+                                      help="Z-score: each topic centred on its own mean.")
 
         if sparse_topics:
             st.caption(f"Low data (< 3 points): {', '.join(sorted(sparse_topics))} — excluded by default.")
@@ -416,14 +560,15 @@ with tab1:
             y_label = "Avg Sentiment"
             zero_label = "Neutral (0)"
 
+        daily["sentiment_score"] = daily["sentiment_score"].round(4)
         fig = px.line(
             daily, x="date", y="sentiment_score", color="topic",
-            markers=True,
+            markers=True, color_discrete_map=TOPIC_COLORS,
             labels={"sentiment_score": y_label, "date": "Date", "topic": "Topic"},
         )
         fig.update_traces(line=dict(width=2.5), marker=dict(size=6))
         fig.update_traces(
-            hovertemplate="<b>%{fullData.name}</b><br>%{x|%b %d, %Y}<br>" + y_label + ": %{y:+.2f}<extra></extra>"
+            hovertemplate="<b>%{fullData.name}</b><br>%{x|%b %d, %Y}<br>" + y_label + ": %{y:+.4f}<extra></extra>"
         )
         fig.add_hline(y=0, line_dash="dot", line_color=THEME["text"], opacity=0.25,
                       annotation_text=zero_label, annotation_position="bottom right",
@@ -431,133 +576,156 @@ with tab1:
         fig.update_layout(height=450, legend=dict(orientation="v", x=1.01, y=1, xanchor="left"))
         st.plotly_chart(fig, use_container_width=True)
 
-        col_a, col_b = st.columns(2)
+        st.markdown("---")
 
-        with col_a:
-            st.markdown("### Stance Distribution")
-            stance_df = df_filtered.groupby(["topic", "stance"]).size().reset_index(name="count")
-            stance_total = stance_df.groupby("topic")["count"].transform("sum")
-            stance_df["pct"] = stance_df["count"] / stance_total * 100
-            fig = px.bar(stance_df, x="topic", y="pct", color="stance",
-                         color_discrete_map={"for": THEME["positive"], "against": THEME["negative"], "neutral": THEME["neutral"]},
-                         labels={"pct": "Percentage (%)"})
-            fig.update_layout(height=400, barmode="stack")
-            st.plotly_chart(fig, use_container_width=True)
-
-        with col_b:
-            st.markdown("### Avg Sentiment per Topic")
-            topic_sent = df_filtered.groupby("topic")["sentiment_score"].mean().sort_values()
-            colors = [THEME["negative"] if v < 0 else THEME["positive"] for v in topic_sent.values]
-            fig = go.Figure(go.Bar(
-                x=topic_sent.values, y=topic_sent.index,
-                orientation="h", marker_color=colors,
-            ))
-            fig.update_layout(height=400, xaxis_title="Avg Sentiment")
-            st.plotly_chart(fig, use_container_width=True)
-
-        # ── Opinion River ──
-        st.markdown("### Opinion River — Stance Proportions Over Time")
-        stance_time = df_filtered.groupby(["date", "stance"]).size().reset_index(name="count")
-        stance_total_day = stance_time.groupby("date")["count"].transform("sum")
-        stance_time["pct"] = stance_time["count"] / stance_total_day * 100
-        fig = px.area(
-            stance_time, x="date", y="pct", color="stance",
-            color_discrete_map={"for": THEME["positive"], "against": THEME["negative"], "neutral": THEME["neutral"]},
-            labels={"pct": "Share (%)", "date": "Date"},
+        # ── Stance Distribution ──
+        st.markdown("### Stance Distribution by Topic")
+        stance_df = df_filtered.groupby(["topic", "stance"]).size().reset_index(name="count")
+        stance_total = stance_df.groupby("topic")["count"].transform("sum")
+        stance_df["pct"] = (stance_df["count"] / stance_total * 100).round(2)
+        fig = px.bar(stance_df, x="topic", y="pct", color="stance",
+                     color_discrete_map={"for": THEME["positive"], "against": THEME["negative"], "neutral": THEME["neutral"]},
+                     labels={"pct": "Percentage (%)", "topic": "Topic"})
+        fig.update_traces(
+            hovertemplate="<b>%{x}</b> · %{fullData.name}<br>Percentage: %{y:.2f}%<extra></extra>"
         )
-        fig.update_layout(height=350)
+        fig.update_layout(height=400, barmode="stack")
         st.plotly_chart(fig, use_container_width=True)
 
-with tab2:
-    if df_filtered.empty:
-        st.info(_no_data_msg)
-    else:
+        st.markdown("---")
+
+        # ── Per-Topic Drill-down ──
+        st.markdown("### Deep Dive by Topic")
         filtered_topics = sorted(df_filtered["topic"].unique())
-        selected_topic = st.selectbox("Choose a topic to drill down", filtered_topics)
+        selected_topic = st.selectbox("Choose a topic", filtered_topics)
         topic_df = df_filtered[df_filtered["topic"] == selected_topic]
 
-        st.markdown(f"### {selected_topic.title()} — {len(topic_df)} posts")
+        st.markdown(f"#### {selected_topic.title()} — {len(topic_df)} posts")
 
         col_a, col_b, col_c = st.columns(3)
-        col_a.metric("Avg Sentiment", f"{topic_df['sentiment_score'].mean():+.3f}" if not topic_df.empty else "—")
+        _ts = topic_df["sentiment_score"].mean() if not topic_df.empty else None
+        col_a.metric(
+            "Avg Sentiment",
+            sentiment_label(_ts) if _ts is not None else "—",
+            delta=f"{_ts:+.3f}  (scale −1 to +1)" if _ts is not None else None,
+            delta_color="normal",
+            help="Ranges from −1 (very negative) to +1 (very positive)",
+        )
         col_b.metric("% In Favor", f"{(topic_df['stance']=='for').mean()*100:.1f}%" if not topic_df.empty else "—")
         col_c.metric("% Against", f"{(topic_df['stance']=='against').mean()*100:.1f}%" if not topic_df.empty else "—")
 
-        st.markdown("#### Sentiment Over Time")
+        st.markdown("##### Sentiment Over Time")
         daily = topic_df.groupby("date")["sentiment_score"].mean().reset_index()
-        fig = px.line(daily, x="date", y="sentiment_score", markers=True)
-        fig.update_traces(line_color=THEME["primary"])
+        daily["sentiment_score"] = daily["sentiment_score"].round(4)
+        fig = px.line(daily, x="date", y="sentiment_score", markers=True,
+                      labels={"sentiment_score": "Avg Sentiment", "date": "Date"})
+        fig.update_traces(
+            line_color=THEME["primary"],
+            hovertemplate="<b>%{x|%b %d, %Y}</b><br>Avg Sentiment: %{y:+.4f}<extra></extra>",
+        )
         fig.add_hline(y=0, line_dash="dash", line_color=THEME["text_muted"], opacity=0.5)
-        fig.update_layout(height=350)
+        fig.update_layout(height=320)
         st.plotly_chart(fig, use_container_width=True)
 
         col_a, col_b = st.columns(2)
-
         with col_a:
-            st.markdown("#### Top Sources")
+            st.markdown("##### Top Sources")
             src_counts = topic_df["source_name"].value_counts().head(10).sort_values(ascending=True)
             fig = go.Figure(go.Bar(x=src_counts.values, y=src_counts.index, orientation="h",
                                    marker_color=THEME["primary"]))
-            fig.update_layout(height=380, xaxis_title="Posts")
+            fig.update_layout(height=360, xaxis_title="Posts")
             st.plotly_chart(fig, use_container_width=True)
 
         with col_b:
-            st.markdown("#### Stance Breakdown")
-            _stance_order = ["for", "against", "neutral"]
-            _stance_colors = [THEME["positive"], THEME["negative"], THEME["neutral"]]
-            stance_counts = topic_df["stance"].value_counts().reindex(_stance_order, fill_value=0)
-            fig = go.Figure(go.Pie(
-                labels=stance_counts.index, values=stance_counts.values,
-                marker_colors=_stance_colors,
-                hole=0.45,
-            ))
-            fig.update_layout(height=380)
-            st.plotly_chart(fig, use_container_width=True)
+            if EMOTIONS_AVAILABLE:
+                st.markdown("##### Emotion Profile")
+                emo_avgs = {
+                    e: topic_df["emotions_parsed"].apply(lambda x: x.get(e, 0) if x else 0).mean()
+                    for e in EMOTION_LABELS
+                }
+                values = list(emo_avgs.values()) + [list(emo_avgs.values())[0]]
+                theta = EMOTION_LABELS + [EMOTION_LABELS[0]]
+                fig = go.Figure(go.Scatterpolar(
+                    r=values, theta=theta, fill="toself",
+                    line_color=THEME["primary"], fillcolor=THEME["primary"], opacity=0.3,
+                ))
+                fig.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 0.5])), height=360)
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.markdown("##### Stance Breakdown")
+                _stance_order = ["for", "against", "neutral"]
+                _stance_colors = [THEME["positive"], THEME["negative"], THEME["neutral"]]
+                stance_counts = topic_df["stance"].value_counts().reindex(_stance_order, fill_value=0)
+                fig = go.Figure(go.Pie(
+                    labels=stance_counts.index, values=stance_counts.values,
+                    marker_colors=_stance_colors, hole=0.45,
+                ))
+                fig.update_layout(height=360)
+                st.plotly_chart(fig, use_container_width=True)
 
-        if EMOTIONS_AVAILABLE:
-            st.markdown("#### Emotion Profile")
-            emo_avgs = {
-                e: topic_df["emotions_parsed"].apply(lambda x: x.get(e, 0) if x else 0).mean()
-                for e in EMOTION_LABELS
-            }
-            values = list(emo_avgs.values()) + [list(emo_avgs.values())[0]]
-            theta = EMOTION_LABELS + [EMOTION_LABELS[0]]
-            fig = go.Figure(go.Scatterpolar(
-                r=values, theta=theta, fill="toself",
-                line_color=THEME["primary"], fillcolor=THEME["primary"], opacity=0.3,
-            ))
-            fig.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 0.5])), height=400)
-            st.plotly_chart(fig, use_container_width=True)
-
-with tab3:
+with tab3:  # ── SOURCES ──
     if df_filtered.empty:
         st.info(_no_data_msg)
     else:
-        st.markdown("### Sentiment Heatmap: Topic × Source Category")
-        heatmap_data = df_filtered.groupby(["topic", "source_category"])["sentiment_score"].mean().reset_index()
-        heatmap_pivot = heatmap_data.pivot(index="topic", columns="source_category", values="sentiment_score")
-        fig = px.imshow(
-            heatmap_pivot,
-            labels=dict(x="Source Category", y="Topic", color="Avg Sentiment"),
-            color_continuous_scale="RdYlGn",
-            color_continuous_midpoint=0,
-            aspect="auto",
+        st.markdown("### Sentiment by Source — Topic Breakdown")
+        st.caption(
+            "Each panel is a source category. Bars show avg sentiment per topic — "
+            "green = positive, red = negative. Missing bars = no coverage of that topic."
         )
-        fig.update_layout(height=max(300, len(heatmap_pivot) * 45 + 80))
+        facet_data = (
+            df_filtered.groupby(["topic", "source_category"])
+            .agg(avg_sentiment=("sentiment_score", "mean"), post_count=("sentiment_score", "count"))
+            .reset_index()
+        )
+        facet_data["avg_sentiment"] = facet_data["avg_sentiment"].round(4)
+        facet_data["sentiment_label"] = facet_data["avg_sentiment"].apply(sentiment_label)
+        facet_data["bar_color"] = facet_data["avg_sentiment"].apply(
+            lambda v: THEME["positive"] if v >= 0.05 else THEME["negative"] if v <= -0.05 else THEME["neutral"]
+        )
+
+        n_cats = facet_data["source_category"].nunique()
+        n_topics = facet_data["topic"].nunique()
+
+        fig = px.bar(
+            facet_data,
+            x="avg_sentiment", y="topic",
+            facet_col="source_category",
+            color="avg_sentiment",
+            color_continuous_scale="RdYlGn",
+            range_color=[-0.5, 0.5],
+            color_continuous_midpoint=0,
+            orientation="h",
+            custom_data=["sentiment_label", "post_count"],
+            labels={"avg_sentiment": "Avg Sentiment", "topic": "Topic", "source_category": ""},
+        )
+        fig.update_traces(
+            hovertemplate=(
+                "<b>%{y}</b><br>"
+                "Sentiment: %{customdata[0]} (%{x:+.4f})<br>"
+                "Posts: %{customdata[1]:,}<extra></extra>"
+            )
+        )
+        fig.add_vline(x=0, line_dash="dot", line_color=THEME["text_muted"], opacity=0.5)
+        fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1].title()))
+        fig.update_layout(
+            height=max(400, n_topics * 30 * n_cats + 120),
+            coloraxis_showscale=False,
+            showlegend=False,
+        )
+        fig.update_yaxes(matches=None)
         st.plotly_chart(fig, use_container_width=True)
 
-        st.markdown("### Sentiment by Source Category")
-        cat_sent = df_filtered.groupby(["source_category", "topic"])["sentiment_score"].mean().reset_index()
-        fig = px.bar(cat_sent, x="topic", y="sentiment_score", color="source_category",
-                     barmode="group", labels={"sentiment_score": "Avg Sentiment"})
-        fig.add_hline(y=0, line_dash="dash", line_color=THEME["text_muted"], opacity=0.5)
-        fig.update_layout(height=500)
-        st.plotly_chart(fig, use_container_width=True)
+        st.markdown("---")
 
         st.markdown("### Posts by Source")
-        src_counts = df_filtered["source_name"].value_counts().head(15).sort_values(ascending=False)
-        fig = go.Figure(go.Bar(x=src_counts.index, y=src_counts.values, marker_color=THEME["primary"]))
-        fig.update_layout(height=400, xaxis_title="", yaxis_title="Posts")
+        st.caption("Which outlets and platforms contribute the most content?")
+        src_counts = df_filtered["source_name"].value_counts().head(15).sort_values(ascending=True)
+        fig = go.Figure(go.Bar(
+            x=src_counts.values, y=src_counts.index,
+            orientation="h", marker_color=THEME["primary"],
+            hovertemplate="%{y}: %{x} posts<extra></extra>",
+        ))
+        fig.update_layout(height=450, xaxis_title="Posts")
         st.plotly_chart(fig, use_container_width=True)
 
 with tab4:
@@ -681,8 +849,7 @@ with tab5:
 st.markdown('<div class="nyt-divider"></div>', unsafe_allow_html=True)
 st.markdown(f"""
 <div style='font-family: Inter, sans-serif; font-size: 0.8rem; color: {THEME["text_muted"]};'>
-Data sources: Bluesky, YouTube, The Guardian, Dev.to, RSS feeds  ·  
-Updated every 5 minutes  ·  
+Data sources: Bluesky, YouTube, The Guardian, Dev.to, RSS feeds  ·
 Built with Streamlit, Supabase, and HuggingFace
 </div>
 """, unsafe_allow_html=True)
