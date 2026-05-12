@@ -781,22 +781,36 @@ with tab4:
         for _, row in posts_view.iterrows():
             sentiment_color = THEME["positive"] if row["sentiment_score"] > 0.2 else THEME["negative"] if row["sentiment_score"] < -0.2 else THEME["neutral"]
             content = clean_content(row["content"])
-            preview = content[:200] + "..." if len(content) > 200 else content
-            label = f"**{row['source_name'].upper()}** · {row['topic']} · Sentiment: {row['sentiment_score']:+.2f} · Stance: {row['stance']}"
+            is_news = row.get("source_category") == "news"
+
+            # For news: show headline only as expander title (first sentence, ≤150 chars)
+            if is_news:
+                dot = content.find(". ", 0, 180)
+                headline = content[:dot].strip() if dot > 20 else content[:150].strip()
+                preview = headline if headline else content[:150]
+                # Body in expanded view: 2-3 sentences (~350 chars max)
+                display_content = content[:350].rstrip() + ("..." if len(content) > 350 else "")
+            else:
+                preview = content[:200] + "..." if len(content) > 200 else content
+                display_content = content
+
+            # Date after sentiment
+            try:
+                date_str = pd.to_datetime(row["created_at"]).strftime("%b %d, %Y")
+            except Exception:
+                date_str = ""
+            label = f"**{row['source_name'].upper()}** · {row['topic']} · Sentiment: {row['sentiment_score']:+.2f} · {date_str} · Stance: {row['stance']}"
+
             url = None
             pid = str(row.get("platform_id", "")) if pd.notna(row.get("platform_id")) else ""
 
             if pid.startswith("http"):
-                # Guardian and RSS feeds store full article URL directly
                 url = pid
             elif pid.startswith("video_"):
-                # YouTube video: "video_{video_id}"
                 video_id = pid[len("video_"):]
                 if video_id:
                     url = f"https://www.youtube.com/watch?v={video_id}"
             elif pid.startswith("comment_"):
-                # YouTube comment: "comment_{video_id}_{yt_comment_id}"
-                # YouTube comment IDs always start with "Ug", so find the last "_Ug"
                 remainder = pid[len("comment_"):]
                 ug_idx = remainder.rfind("_Ug")
                 if ug_idx > 0:
@@ -809,7 +823,7 @@ with tab4:
                         {label}
                     </div>
                     <div style='font-family: Lora, serif; font-size: 1rem; line-height: 1.6;'>
-                        {content}
+                        {display_content}
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
