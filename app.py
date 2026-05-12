@@ -737,9 +737,22 @@ with tab4:
     with col_b:
         sort_by = st.selectbox("Sort by", ["Newest", "Most Engaged", "Most Negative", "Most Positive", "For (Stance)", "Against (Stance)", "Neutral (Stance)"])
 
+    all_platforms = sorted(df_filtered["platform"].dropna().unique().tolist())
+    all_sources   = sorted(df_filtered["source_name"].dropna().unique().tolist())
+
+    col_c, col_d = st.columns(2)
+    with col_c:
+        platform_filter = st.multiselect("Platform", all_platforms, placeholder="All platforms", key="posts_platform")
+    with col_d:
+        source_filter = st.multiselect("Source", all_sources, placeholder="All sources", key="posts_source")
+
     posts_view = df_filtered.copy()
     if search:
         posts_view = posts_view[posts_view["content"].str.contains(search, case=False, na=False)]
+    if platform_filter:
+        posts_view = posts_view[posts_view["platform"].isin(platform_filter)]
+    if source_filter:
+        posts_view = posts_view[posts_view["source_name"].isin(source_filter)]
 
     if sort_by == "Newest":
         posts_view = posts_view.sort_values("created_at", ascending=False)
