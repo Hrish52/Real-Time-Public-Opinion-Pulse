@@ -737,26 +737,26 @@ with tab4:
     with col_b:
         sort_by = st.selectbox("Sort by", ["Newest", "Most Engaged", "Most Negative", "Most Positive", "For (Stance)", "Against (Stance)", "Neutral (Stance)"])
 
-    all_categories = sorted(df_filtered["source_category"].dropna().unique().tolist())
+    all_categories = ["All"] + sorted(df_filtered["source_category"].dropna().unique().tolist())
 
     col_c, col_d = st.columns(2)
     with col_c:
-        category_filter = st.multiselect("Platform", all_categories, placeholder="All platforms", key="posts_category")
+        category_filter = st.selectbox("Platform", all_categories, key="posts_category")
 
-    # Source names cascade from category — if no category chosen, show all source names
-    category_base = df_filtered[df_filtered["source_category"].isin(category_filter)] if category_filter else df_filtered
-    all_sources   = sorted(category_base["source_name"].dropna().unique().tolist())
+    # Source names cascade from selected category
+    category_base = df_filtered if category_filter == "All" else df_filtered[df_filtered["source_category"] == category_filter]
+    all_sources   = ["All"] + sorted(category_base["source_name"].dropna().unique().tolist())
 
     with col_d:
-        source_filter = st.multiselect("Source", all_sources, placeholder="All sources", key="posts_source")
+        source_filter = st.selectbox("Source", all_sources, key="posts_source")
 
     posts_view = df_filtered.copy()
     if search:
         posts_view = posts_view[posts_view["content"].str.contains(search, case=False, na=False)]
-    if category_filter:
-        posts_view = posts_view[posts_view["source_category"].isin(category_filter)]
-    if source_filter:
-        posts_view = posts_view[posts_view["source_name"].isin(source_filter)]
+    if category_filter != "All":
+        posts_view = posts_view[posts_view["source_category"] == category_filter]
+    if source_filter != "All":
+        posts_view = posts_view[posts_view["source_name"] == source_filter]
 
     if sort_by == "Newest":
         posts_view = posts_view.sort_values("created_at", ascending=False)
