@@ -783,18 +783,29 @@ with tab4:
             content = clean_content(row["content"])
             is_news = row.get("source_category") == "news"
 
-            # For news: show headline only as expander title
+            # For news: pull clean title from raw_metadata (most reliable source)
             if is_news:
-                dot = content.find(". ", 0, 160)
-                if dot > 20:
-                    # Guardian-style: period clearly separates headline from trail text
-                    headline = content[:dot].strip()
+                raw_meta = row.get("raw_metadata") or {}
+                if not isinstance(raw_meta, dict):
+                    raw_meta = {}
+                plat = str(row.get("platform", ""))
+                if plat == "guardian":
+                    title_from_meta = str(raw_meta.get("webTitle", "")).strip()
+                elif plat == "rss":
+                    title_from_meta = str(raw_meta.get("title", "")).strip()
                 else:
-                    # RSS-style: title and summary are space-concatenated (no period)
-                    # Cut at the last word boundary before ~100 chars to get just the title
-                    cut = content.rfind(" ", 0, 100)
-                    headline = content[:cut].strip() if cut > 20 else content[:100].strip()
-                preview = headline
+                    title_from_meta = ""
+
+                if len(title_from_meta) > 20:
+                    preview = title_from_meta
+                else:
+                    # Fallback: period search (Guardian-style) then hard word-boundary cut
+                    dot = content.find(". ", 0, 160)
+                    if dot > 20:
+                        preview = content[:dot].strip()
+                    else:
+                        cut = content.rfind(" ", 0, 80)
+                        preview = content[:cut].strip() if cut > 20 else content[:80].strip()
                 # Body in expanded view: 2-3 sentences (~350 chars max)
                 display_content = content[:350].rstrip() + ("..." if len(content) > 350 else "")
             else:
