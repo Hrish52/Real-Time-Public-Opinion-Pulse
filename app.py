@@ -737,15 +737,15 @@ with tab4:
     with col_b:
         sort_by = st.selectbox("Sort by", ["Newest", "Most Engaged", "Most Negative", "Most Positive", "For (Stance)", "Against (Stance)", "Neutral (Stance)"])
 
-    all_platforms = sorted(df_filtered["platform"].dropna().unique().tolist())
+    all_categories = sorted(df_filtered["source_category"].dropna().unique().tolist())
 
     col_c, col_d = st.columns(2)
     with col_c:
-        platform_filter = st.multiselect("Platform", all_platforms, placeholder="All platforms", key="posts_platform")
+        category_filter = st.multiselect("Platform", all_categories, placeholder="All platforms", key="posts_category")
 
-    # Source options cascade from platform selection — if no platform chosen, show all sources
-    platform_base = df_filtered[df_filtered["platform"].isin(platform_filter)] if platform_filter else df_filtered
-    all_sources   = sorted(platform_base["source_name"].dropna().unique().tolist())
+    # Source names cascade from category — if no category chosen, show all source names
+    category_base = df_filtered[df_filtered["source_category"].isin(category_filter)] if category_filter else df_filtered
+    all_sources   = sorted(category_base["source_name"].dropna().unique().tolist())
 
     with col_d:
         source_filter = st.multiselect("Source", all_sources, placeholder="All sources", key="posts_source")
@@ -753,8 +753,8 @@ with tab4:
     posts_view = df_filtered.copy()
     if search:
         posts_view = posts_view[posts_view["content"].str.contains(search, case=False, na=False)]
-    if platform_filter:
-        posts_view = posts_view[posts_view["platform"].isin(platform_filter)]
+    if category_filter:
+        posts_view = posts_view[posts_view["source_category"].isin(category_filter)]
     if source_filter:
         posts_view = posts_view[posts_view["source_name"].isin(source_filter)]
 
