@@ -783,11 +783,18 @@ with tab4:
             content = clean_content(row["content"])
             is_news = row.get("source_category") == "news"
 
-            # For news: show headline only as expander title (first sentence, ≤150 chars)
+            # For news: show headline only as expander title
             if is_news:
-                dot = content.find(". ", 0, 180)
-                headline = content[:dot].strip() if dot > 20 else content[:150].strip()
-                preview = headline if headline else content[:150]
+                dot = content.find(". ", 0, 160)
+                if dot > 20:
+                    # Guardian-style: period clearly separates headline from trail text
+                    headline = content[:dot].strip()
+                else:
+                    # RSS-style: title and summary are space-concatenated (no period)
+                    # Cut at the last word boundary before ~100 chars to get just the title
+                    cut = content.rfind(" ", 0, 100)
+                    headline = content[:cut].strip() if cut > 20 else content[:100].strip()
+                preview = headline
                 # Body in expanded view: 2-3 sentences (~350 chars max)
                 display_content = content[:350].rstrip() + ("..." if len(content) > 350 else "")
             else:
